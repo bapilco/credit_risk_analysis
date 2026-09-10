@@ -2,6 +2,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import pandas as pd
+from sklearn.decomposition import PCA
 
 from sklearn.metrics import (
     roc_curve,
@@ -149,3 +150,42 @@ class ModelVisualizer:
             f"Explained Variance: "
             f"{sum(pca_model.explained_variance())*100:.2f}%"
         )
+
+
+    def plot_scree(self, X_train):
+
+        pca = PCA()
+        pca.fit(X_train)
+
+        explained = pca.explained_variance_ratio_
+
+        plt.figure(figsize=(7,4))
+
+        plt.plot(
+            range(1, len(explained)+1),
+            explained,
+            marker="o",
+            linewidth=2
+        )
+
+        plt.axvline(
+            x=4,
+            color="red",
+            linestyle="--",
+            alpha=0.8,
+            label="Codo visual"
+        )
+
+        plt.xticks(range(1, len(explained)+1))
+        plt.xlabel("Componentes principales")
+        plt.ylabel("Varianza explicada")
+        plt.title("Scree Plot - PCA")
+        plt.grid(alpha=0.3)
+        plt.legend(loc="upper left")
+
+        plt.tight_layout()
+        plt.savefig(
+            self.output_dir / "scree_plot.png",
+            dpi=300
+        )
+        plt.close()

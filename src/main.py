@@ -138,6 +138,7 @@ def main():
     )
 
     visualizer.plot_pca_variance(pca_model)
+    visualizer.plot_scree(X_train)
 
     visualizer.plot_roc(
         baseline_model,
