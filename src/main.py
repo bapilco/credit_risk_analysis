@@ -9,51 +9,37 @@ from data.preprocessing import Preprocessor
 from models.logistic_model import LogisticModel
 from models.pca_model import PCAModel
 
+from evaluation.cross_validator import CrossValidator
 from evaluation.metrics import MetricsEvaluator
 from evaluation.visualizer import ModelVisualizer
 
 from explainability.shap_explainer import SHAPExplainer
 from inference.predictor import CreditPredictor
 
-
 RESULTS_DIR = Path("results")
 
 
-def train_model(model, X_train, X_test, y_train, y_test):
-    """Entrena un modelo y retorna sus métricas."""
+def generate_shap(model, feature_names, X):
 
-    model.train(X_train, y_train)
-
-    return MetricsEvaluator.evaluate(
-        y_test,
-        model.predict(X_test),
-        model.predict_proba(X_test)
-    )
-
-
-def generate_shap(baseline_model, feature_names, X_train, X_test):
-    """Genera las visualizaciones SHAP."""
-
-    X_train_df = pd.DataFrame(X_train, columns=feature_names)
-    X_test_df = pd.DataFrame(X_test, columns=feature_names)
+    X_df = pd.DataFrame(X, columns=feature_names)
 
     background = shap.sample(
-        X_train_df,
+        X_df,
         100,
         random_state=42
     )
 
     explainer = SHAPExplainer(
-        baseline_model,
+        model,
         feature_names,
         background
     )
 
-    shap_values = explainer.explain(X_test_df)
+    shap_values = explainer.explain(X_df)
 
     explainer.summary_plot(
         shap_values,
-        X_test_df,
+        X_df,
         RESULTS_DIR / "shap_summary.png"
     )
 
@@ -64,16 +50,14 @@ def generate_shap(baseline_model, feature_names, X_train, X_test):
     )
 
 
-def generate_predictions(pca_model, preprocessor):
-    """
-    Realiza inferencia sobre clientes nuevos
-    utilizando cs-test.csv.
-    """
+def generate_predictions(model, preprocessor):
 
-    test_df = DataLoader("data/raw/cs-test.csv").load()
+    test_df = DataLoader(
+        "data/raw/cs-test.csv"
+    ).load()
 
     predictor = CreditPredictor(
-        model=pca_model,
+        model=model,
         preprocessor=preprocessor
     )
 
@@ -92,90 +76,111 @@ def main():
     RESULTS_DIR.mkdir(exist_ok=True)
 
     # =====================================================
-    # 1. CARGA Y PREPROCESAMIENTO (TRAINING)
+    # 1. CARGA DEL DATASET
     # =====================================================
 
-    training_df = DataLoader(
+    df = DataLoader(
         "data/processed/training_clean.parquet"
     ).load()
 
     preprocessor = Preprocessor()
 
-    X_train, X_test, y_train, y_test = preprocessor.process(training_df)
+    X, y = preprocessor.process(df)
+
+    feature_names = df.drop(
+        columns=["SeriousDlqin2yrs"]
+    ).columns
 
     # =====================================================
-    # 2. ENTRENAMIENTO DE MODELOS
+    # 2. MODELO BASE
     # =====================================================
 
     baseline_model = LogisticModel()
-    pca_model = PCAModel()
 
-    baseline_results = train_model(
-        baseline_model,
-        X_train,
-        X_test,
-        y_train,
-        y_test
+    # =====================================================
+    # 3. 5-FOLD CROSS VALIDATION
+    # =====================================================
+
+    cv_results = CrossValidator.evaluate(
+        baseline_model.model,
+        X,
+        y
     )
 
-    pca_results = train_model(
-        pca_model,
-        X_train,
-        X_test,
-        y_train,
-        y_test
+    metrics = cv_results.mean().to_dict()
+
+    y_true, y_pred, y_prob = CrossValidator.predict(
+        baseline_model.model,
+        X,
+        y
+    )
+
+    MetricsEvaluator.evaluate(
+        y_true,
+        y_pred,
+        y_prob
     )
 
     # =====================================================
-    # 3. VISUALIZACIONES Y MÉTRICAS
+    # 4. ENTRENAR MODELO FINAL PCA
+    # =====================================================
+
+    pca_model = PCAModel()
+    pca_model.train(X, y)
+
+    # =====================================================
+    # 5. VISUALIZACIONES
     # =====================================================
 
     visualizer = ModelVisualizer()
 
-    visualizer.save_metrics(
-        baseline_results,
-        pca_results
-    )
+    visualizer.save_metrics(metrics)
 
-    visualizer.plot_pca_variance(pca_model)
-    visualizer.plot_scree(X_train)
-
-    visualizer.plot_roc(
-        baseline_model,
-        pca_model,
-        X_test,
-        y_test
+    visualizer.print_summary(
+        metrics,
+        pca_model
     )
 
     visualizer.plot_confusion_matrix(
-        pca_model,
-        X_test,
-        y_test
+        y_true,
+        y_pred
     )
 
-    visualizer.print_summary(
-        baseline_results,
-        pca_results,
+    visualizer.plot_roc(
+        y_true,
+        y_prob
+    )
+
+    visualizer.plot_scree(X)
+
+    visualizer.plot_pca_variance(
         pca_model
     )
 
     # =====================================================
-    # 4. SHAP
+    # 6. ENTRENAR MODELO FINAL BASE (PARA SHAP)
     # =====================================================
+    
+    baseline_model.train(X, y)
+    
+    generate_shap(
+        baseline_model,
+        feature_names,
+        X
+    )
 
-    feature_names = training_df.drop(
-        columns=["SeriousDlqin2yrs"]
-    ).columns
+    # =====================================================
+    # 6. SHAP (MODELO FINAL)
+    # =====================================================
 
     generate_shap(
         baseline_model,
         feature_names,
-        X_train,
-        X_test
+        X
     )
 
     # =====================================================
-    # 5. INFERENCIA SOBRE CS-TEST
+    # 7. INFERENCIA
     # =====================================================
 
     generate_predictions(

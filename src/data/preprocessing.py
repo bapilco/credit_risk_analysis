@@ -9,43 +9,31 @@ class Preprocessor:
         self.dependents_median = None
 
     def process(self, df):
-
-        X = df.drop(columns=["SeriousDlqin2yrs"])
-        y = df["SeriousDlqin2yrs"]
-
-        X_train, X_test, y_train, y_test = train_test_split(
-            X,
-            y,
-            test_size=0.2,
-            stratify=y,
-            random_state=42
-        )
-
-        # 1. Aprender medianas SOLO del entrenamiento
-        self.income_median = X_train["MonthlyIncome"].median()
-        self.dependents_median = X_train["NumberOfDependents"].median()
-
-        # 2. Imputar entrenamiento
-        X_train["MonthlyIncome"] = X_train["MonthlyIncome"].fillna(
+    
+        # Variables predictoras y objetivo
+        X = df.drop(columns=["SeriousDlqin2yrs"]).copy()
+        y = df["SeriousDlqin2yrs"].copy()
+    
+        # Aprender las medianas
+        self.income_median = X["MonthlyIncome"].median()
+        self.dependents_median = X["NumberOfDependents"].median()
+    
+        # Imputación
+        X["MonthlyIncome"] = X["MonthlyIncome"].fillna(
             self.income_median
         )
-        X_train["NumberOfDependents"] = X_train[
-            "NumberOfDependents"
-        ].fillna(self.dependents_median)
-
-        # 3. Imputar prueba usando las mismas medianas
-        X_test["MonthlyIncome"] = X_test["MonthlyIncome"].fillna(
-            self.income_median
+    
+        X["NumberOfDependents"] = X["NumberOfDependents"].fillna(
+            self.dependents_median
         )
-        X_test["NumberOfDependents"] = X_test[
-            "NumberOfDependents"
-        ].fillna(self.dependents_median)
-
-        # 4. Escalado
-        X_train = self.scaler.fit_transform(X_train)
-        X_test = self.scaler.transform(X_test)
-
-        return X_train, X_test, y_train, y_test
+    
+        # Guardar el orden de las columnas
+        self.feature_names = X.columns.tolist()
+    
+        # Escalado
+        X = self.scaler.fit_transform(X)
+    
+        return X, y
 
     def transform(self, X):
         X = X.copy()
