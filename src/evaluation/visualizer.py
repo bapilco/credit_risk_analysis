@@ -3,6 +3,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import pandas as pd
 from sklearn.metrics import roc_curve, auc
+from sklearn.decomposition import PCA
 
 from sklearn.metrics import (
     ConfusionMatrixDisplay,
@@ -30,28 +31,28 @@ class ModelVisualizer:
 
         print("Métricas guardadas en results/model_metrics.csv")
 
-    def print_summary(self, metrics, pca_model):
-
-        print("\n===== RESULTADOS CROSS VALIDATION =====\n")
-
-        print(f"{'Métrica':<12} {'Valor':<10}")
-
-        for metric in [
-            "accuracy",
-            "precision",
-            "recall",
-            "f1",
-            "roc_auc"
-        ]:
-            print(f"{metric:<12} {metrics[metric]:<10.4f}")
-
-        print("\nComponentes retenidos:",
-              len(pca_model.explained_variance()))
-
-        print(
-            "Varianza explicada:",
-            f"{sum(pca_model.explained_variance()) * 100:.2f}%"
-        )
+#    def print_summary(self, metrics, pca_model):
+#
+#        print("\n===== RESULTADOS CROSS VALIDATION =====\n")
+#
+#        print(f"{'Métrica':<12} {'Valor':<10}")
+#
+#        for metric in [
+#            "accuracy",
+#            "precision",
+#            "recall",
+#            "f1",
+#            "roc_auc"
+#        ]:
+#            print(f"{metric:<12} {metrics[metric]:<10.4f}")
+#
+#        print("\nComponentes retenidos:",
+#              len(pca_model.explained_variance()))
+#
+#        print(
+#            "Varianza explicada:",
+#            f"{sum(pca_model.explained_variance()) * 100:.2f}%"
+#        )
 
     # =====================================================
     # PCA
@@ -95,8 +96,6 @@ class ModelVisualizer:
         print("Gráfico guardado -> results/pca_variance.png")
 
     def plot_scree(self, X):
-
-        from sklearn.decomposition import PCA
 
         pca = PCA()
         pca.fit(X)

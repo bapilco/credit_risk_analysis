@@ -171,9 +171,11 @@ def main():
     # 6. VISUALIZACIONES BASELINE
     # =====================================================
 
-    visualizer.print_summary(
-        baseline_metrics,
-        pca_model
+    print("\n===== PCA =====")
+    print(f"Componentes retenidos: {pca_model.pca.n_components_}")
+    print(
+        f"Varianza explicada: "
+        f"{pca_model.cumulative_variance()[-1] * 100:.2f}%"
     )
 
     visualizer.plot_confusion_matrix(
