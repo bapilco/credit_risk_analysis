@@ -1,78 +1,71 @@
-from sklearn.model_selection import StratifiedKFold, cross_validate
 import pandas as pd
-from sklearn.model_selection import cross_val_predict
+
+from sklearn.model_selection import StratifiedKFold
+
+from evaluation.metrics import MetricsEvaluator
 
 
 class CrossValidator:
 
     @staticmethod
-    def evaluate(model, X, y, folds=5):
+    def evaluate(model, X, y, n_splits=5):
 
-        cv = StratifiedKFold(
-            n_splits=folds,
+        skf = StratifiedKFold(
+            n_splits=n_splits,
             shuffle=True,
             random_state=42
         )
 
-        scoring = {
-            "accuracy": "accuracy",
-            "precision": "precision",
-            "recall": "recall",
-            "f1": "f1",
-            "roc_auc": "roc_auc"
-        }
+        results = []
 
-        scores = cross_validate(
-            estimator=model,
-            X=X,
-            y=y,
-            cv=cv,
-            scoring=scoring,
-            n_jobs=-1
-        )
+        for train_idx, test_idx in skf.split(X, y):
 
-        results = pd.DataFrame({
-            "accuracy": scores["test_accuracy"],
-            "precision": scores["test_precision"],
-            "recall": scores["test_recall"],
-            "f1": scores["test_f1"],
-            "roc_auc": scores["test_roc_auc"]
-        })
+            X_train = X[train_idx]
+            X_test = X[test_idx]
 
-        return results
+            y_train = y.iloc[train_idx]
+            y_test = y.iloc[test_idx]
 
+            model.train(X_train, y_train)
 
+            y_pred = model.predict(X_test)
+            y_prob = model.predict_proba(X_test)
+
+            metrics = MetricsEvaluator.evaluate(
+                y_test,
+                y_pred,
+                y_prob
+            )
+
+            results.append(metrics)
+
+        return pd.DataFrame(results)
 
     @staticmethod
-    def predict(model, X, y, folds=5):
-        """
-        Genera predicciones y probabilidades mediante
-        validación cruzada estratificada.
-        """
+    def predict(model, X, y, n_splits=5):
 
-        cv = StratifiedKFold(
-            n_splits=folds,
+        skf = StratifiedKFold(
+            n_splits=n_splits,
             shuffle=True,
             random_state=42
         )
 
-        # Predicción de clases (0 o 1)
-        y_pred = cross_val_predict(
-            estimator=model,
-            X=X,
-            y=y,
-            cv=cv,
-            n_jobs=-1
-        )
+        y_true = []
+        y_pred = []
+        y_prob = []
 
-        # Probabilidades de la clase positiva
-        y_prob = cross_val_predict(
-            estimator=model,
-            X=X,
-            y=y,
-            cv=cv,
-            method="predict_proba",
-            n_jobs=-1
-        )[:, 1]
+        for train_idx, test_idx in skf.split(X, y):
 
-        return y, y_pred, y_prob
+            X_train = X[train_idx]
+            X_test = X[test_idx]
+
+            y_train = y.iloc[train_idx]
+            y_test = y.iloc[test_idx]
+
+            model.train(X_train, y_train)
+
+            y_true.extend(y_test)
+            y_pred.extend(model.predict(X_test))
+            y_prob.extend(model.predict_proba(X_test))
+
+        return y_true, y_pred, y_prob

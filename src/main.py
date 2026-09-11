@@ -1,7 +1,6 @@
 from pathlib import Path
 
 import pandas as pd
-import shap
 
 from data.loader import DataLoader
 from data.preprocessing import Preprocessor
@@ -10,7 +9,6 @@ from models.logistic_model import LogisticModel
 from models.pca_model import PCAModel
 
 from evaluation.cross_validator import CrossValidator
-from evaluation.metrics import MetricsEvaluator
 from evaluation.visualizer import ModelVisualizer
 
 from explainability.shap_explainer import SHAPExplainer
@@ -18,21 +16,15 @@ from inference.predictor import CreditPredictor
 
 RESULTS_DIR = Path("results")
 
-
 def generate_shap(model, feature_names, X):
 
+    # Recuperar nombres de las columnas
     X_df = pd.DataFrame(X, columns=feature_names)
-
-    background = shap.sample(
-        X_df,
-        100,
-        random_state=42
-    )
 
     explainer = SHAPExplainer(
         model,
         feature_names,
-        background
+        X_df
     )
 
     shap_values = explainer.explain(X_df)
@@ -49,6 +41,7 @@ def generate_shap(model, feature_names, X):
         output_path=RESULTS_DIR / "shap_waterfall.png"
     )
 
+    print("Gráficos SHAP guardados en results/shap_summary.png y results/shap_waterfall.png")
 
 def generate_predictions(model, preprocessor):
 
@@ -76,7 +69,7 @@ def main():
     RESULTS_DIR.mkdir(exist_ok=True)
 
     # =====================================================
-    # 1. CARGA DEL DATASET
+    # 1. CARGA Y PREPROCESAMIENTO
     # =====================================================
 
     df = DataLoader(
@@ -87,90 +80,136 @@ def main():
 
     X, y = preprocessor.process(df)
 
-    feature_names = df.drop(
-        columns=["SeriousDlqin2yrs"]
-    ).columns
+    feature_names = preprocessor.feature_names
+
+    visualizer = ModelVisualizer()
 
     # =====================================================
-    # 2. MODELO BASE
+    # 2. BASELINE + CROSS VALIDATION
     # =====================================================
 
     baseline_model = LogisticModel()
 
-    # =====================================================
-    # 3. 5-FOLD CROSS VALIDATION
-    # =====================================================
-
-    cv_results = CrossValidator.evaluate(
-        baseline_model.model,
+    baseline_cv = CrossValidator.evaluate(
+        baseline_model,
         X,
         y
     )
 
-    metrics = cv_results.mean().to_dict()
+    baseline_metrics = baseline_cv.mean(numeric_only=True).to_dict()
 
-    y_true, y_pred, y_prob = CrossValidator.predict(
-        baseline_model.model,
+    y_true_base, y_pred_base, y_prob_base = CrossValidator.predict(
+        baseline_model,
         X,
         y
     )
 
-    MetricsEvaluator.evaluate(
-        y_true,
-        y_pred,
-        y_prob
-    )
-
     # =====================================================
-    # 4. ENTRENAR MODELO FINAL PCA
+    # 3. PCA + CROSS VALIDATION
     # =====================================================
 
     pca_model = PCAModel()
+
+    pca_cv = CrossValidator.evaluate(
+        pca_model,
+        X,
+        y
+    )
+
+    pca_metrics = pca_cv.mean(numeric_only=True).to_dict()
+
+    y_true_pca, y_pred_pca, y_prob_pca = CrossValidator.predict(
+        pca_model,
+        X,
+        y
+    )
+
+    # =====================================================
+    # 4. COMPARACIÓN DE MODELOS
+    # =====================================================
+
+    comparison = pd.DataFrame({
+        "Metric": [
+            "Accuracy",
+            "Precision",
+            "Recall",
+            "F1",
+            "ROC_AUC"
+        ],
+        "Baseline": [
+            baseline_metrics["accuracy"],
+            baseline_metrics["precision"],
+            baseline_metrics["recall"],
+            baseline_metrics["f1"],
+            baseline_metrics["roc_auc"]
+        ],
+        "PCA": [
+            pca_metrics["accuracy"],
+            pca_metrics["precision"],
+            pca_metrics["recall"],
+            pca_metrics["f1"],
+            pca_metrics["roc_auc"]
+        ]
+    })
+
+    comparison.to_csv(
+        RESULTS_DIR / "model_comparison.csv",
+        index=False
+    )
+
+    print("\n===== COMPARACIÓN CROSS VALIDATION =====\n")
+    print(comparison.round(4))
+
+    # =====================================================
+    # 5. ENTRENAR MODELOS FINALES (100%)
+    # =====================================================
+
+    baseline_model.train(X, y)
     pca_model.train(X, y)
 
     # =====================================================
-    # 5. VISUALIZACIONES
+    # 6. VISUALIZACIONES BASELINE
     # =====================================================
 
-    visualizer = ModelVisualizer()
-
-    visualizer.save_metrics(metrics)
-
     visualizer.print_summary(
-        metrics,
+        baseline_metrics,
         pca_model
     )
 
     visualizer.plot_confusion_matrix(
-        y_true,
-        y_pred
+        y_true_base,
+        y_pred_base,
+        "baseline"
     )
 
     visualizer.plot_roc(
-        y_true,
-        y_prob
+        y_true_base,
+        y_prob_base,
+        "baseline"
+    )
+
+    # =====================================================
+    # 7. VISUALIZACIONES PCA
+    # =====================================================
+
+    visualizer.plot_confusion_matrix(
+        y_true_pca,
+        y_pred_pca,
+        "pca"
+    )
+
+    visualizer.plot_roc(
+        y_true_pca,
+        y_prob_pca,
+        "pca"
     )
 
     visualizer.plot_scree(X)
 
-    visualizer.plot_pca_variance(
-        pca_model
-    )
+    visualizer.plot_pca_variance(pca_model)
 
     # =====================================================
-    # 6. ENTRENAR MODELO FINAL BASE (PARA SHAP)
-    # =====================================================
-    
-    baseline_model.train(X, y)
-    
-    generate_shap(
-        baseline_model,
-        feature_names,
-        X
-    )
-
-    # =====================================================
-    # 6. SHAP (MODELO FINAL)
+    # 8. SHAP (BASELINE)
     # =====================================================
 
     generate_shap(
@@ -180,7 +219,7 @@ def main():
     )
 
     # =====================================================
-    # 7. INFERENCIA
+    # 9. INFERENCIA (PCA)
     # =====================================================
 
     generate_predictions(

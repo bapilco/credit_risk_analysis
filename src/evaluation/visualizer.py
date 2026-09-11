@@ -2,6 +2,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import pandas as pd
+from sklearn.metrics import roc_curve, auc
 
 from sklearn.metrics import (
     ConfusionMatrixDisplay,
@@ -139,49 +140,57 @@ class ModelVisualizer:
     # =====================================================
     # CROSS VALIDATION
     # =====================================================
+    def plot_roc(self, y_true, y_prob, model_name):
 
-    def plot_roc(self, y_true, y_prob):
+        fpr, tpr, _ = roc_curve(y_true, y_prob)
+        roc_auc = auc(fpr, tpr)
 
-        plt.figure(figsize=(6, 6))
+        plt.figure(figsize=(6, 5))
 
-        RocCurveDisplay.from_predictions(
-            y_true,
-            y_prob,
-            name="Logistic Regression (5-Fold CV)"
+        plt.plot(
+            fpr,
+            tpr,
+            label=f"AUC = {roc_auc:.3f}"
         )
 
-        plt.title("ROC Curve - Cross Validation")
+        plt.plot([0, 1], [0, 1], "--")
 
-        plt.grid(alpha=0.3)
+        plt.xlabel("False Positive Rate")
+        plt.ylabel("True Positive Rate")
+        plt.title(f"ROC Curve - {model_name.upper()}")
+
+        plt.legend()
         plt.tight_layout()
 
         plt.savefig(
-            self.output_dir / "roc_curve.png",
+            f"results/roc_{model_name}.png",
             dpi=300
         )
+
         plt.close()
 
-        print("Gráfico guardado -> results/roc_curve.png")
+        print(f"Gráfico guardado -> results/roc_{model_name}.png")
 
-    def plot_confusion_matrix(self, y_true, y_pred):
+    def plot_confusion_matrix(self, y_true, y_pred, model_name):
 
-        plt.figure(figsize=(6, 6))
+        fig, ax = plt.subplots(figsize=(5, 5))
 
         ConfusionMatrixDisplay.from_predictions(
             y_true,
             y_pred,
             cmap="Blues",
-            values_format="d"
+            ax=ax
         )
 
-        plt.title("Confusion Matrix - Cross Validation")
+        ax.set_title(f"Confusion Matrix - {model_name.upper()}")
 
         plt.tight_layout()
 
         plt.savefig(
-            self.output_dir / "confusion_matrix.png",
+            f"results/confusion_{model_name}.png",
             dpi=300
         )
+
         plt.close()
 
-        print("Gráfico guardado -> results/confusion_matrix.png")
+        print(f"Gráfico guardado -> results/confusion_{model_name}.png")
